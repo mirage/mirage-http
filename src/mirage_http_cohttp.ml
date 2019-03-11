@@ -8,6 +8,7 @@ type body = unit -> (raw * int * int) option Lwt.t
 
 type req =
   { req : Cohttp.Request.t
+  ; uri : uri
   ; body : body option }
 
 type resp =
@@ -30,8 +31,6 @@ let body_to_stream body =
 
 module HTTP = struct
   type headers = Cohttp.Header.t
-
-  type path = string list
 
   type meth = Cohttp.Code.meth
 
@@ -98,17 +97,18 @@ module Request = struct
   let with_headers x headers =
     {x with req = {x.req with Cohttp.Request.headers}}
 
-  let with_path x path =
-    { x with
-      req = {x.req with Cohttp.Request.resource = String.concat "/" path} }
-
   let with_body (x : req) body = {x with body = Some body}
+
+  let with_uri (x : req) uri =
+    let req = {x.req with resource = Uri.path uri} in
+    {{x with req} with uri}
+
 
   let v ?(version = (1, 1)) meth ~path ?body headers =
     let req =
       { Cohttp.Request.headers
       ; meth
-      ; resource = String.concat "/" path
+      ; resource = Uri.path path
       ; version =
           ( match version with
           | 1, 0 ->
@@ -121,7 +121,7 @@ module Request = struct
                    (Fmt.strf "Request.v: invalid version %d.%d" a b)) )
       ; encoding = Cohttp.Transfer.Chunked }
     in
-    {req; body}
+    {req; uri=path; body}
 
   let body ({body; _} : req) = body
 
@@ -195,8 +195,15 @@ module Client (CON : Conduit_mirage.S) = struct
 
   type t = Resolver_lwt.t * CON.t
 
-  let request ((resolver, conduit) : t) uri (request : req) =
+  let request ((resolver, conduit) : t) (request : req) =
+    let uri = request.uri in
+
+    let default_header = match Uri.host uri with
+      | None -> HTTP.Headers.empty
+      | Some host ->Cohttp.Header.of_list ["Host",host]
+    in
     let headers = Cohttp.Request.headers request.req in
+    let headers = HTTP.Headers.merge default_header headers in
     let ctx = Cohttp_mirage.Client.ctx resolver conduit in
     let meth = Cohttp.Request.meth request.req in
     let body_if_redirection, push = Lwt_stream.create () in
@@ -211,7 +218,6 @@ module Client (CON : Conduit_mirage.S) = struct
                  push (Some s); s )
           |> fun stream -> Some (`Stream stream)
     in
-    let uri = Uri.with_path uri request.req.resource in
     (* XXX(dinosaure): [~chunked:false] is mandatory, I don't want to explain
          why (I lost one day to find this bug) but believe me. *)
     Cohttp_mirage.Client.call ~ctx ~headers ?body ~chunked:false meth uri
@@ -277,7 +283,13 @@ module Server (CON : Conduit_mirage.S) = struct
   let to_cohttp_request_handler (request_handler : request_handler)
       (conn : Cohttp_server.conn) (request : Cohttp.Request.t)
       (body : Cohttp_lwt.Body.t) : Cohttp_server.response_action Lwt.t =
-    let req = {req = request; body = Some (body_to_stream body)} in
+    let host =
+      match Cohttp.Header.get request.headers "Host" with
+      | None -> ""
+      | Some x -> x
+    in
+    let uri = Uri.make ~host ~path:request.resource () in
+    let req = {req = request; uri; body = Some (body_to_stream body)} in
     request_handler (req, conn) >>= map_to_response_action
 
   let create_connection_handler request_handler _error_handler =

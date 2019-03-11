@@ -8,6 +8,7 @@ type body = unit -> (raw * int * int) option Lwt.t
 
 type req =
   { req : Httpaf.Request.t
+  ; uri : uri
   ; body : body option }
 
 type resp =
@@ -16,8 +17,6 @@ type resp =
 
 module HTTP = struct
   type headers = Httpaf.Headers.t
-
-  type path = string list
 
   type meth =
     [ Httpaf.Method.t
@@ -116,16 +115,18 @@ module Request = struct
 
   let with_headers x headers = {x with req = {x.req with headers}}
 
-  let with_path x path =
-    {x with req = {x.req with target = String.concat "/" path}}
-
   let with_body (x : req) body = {x with body = Some body}
+
+  let with_uri (x : req) uri =
+    let req = {x.req with target = Uri.path uri} in
+    let x = {x with req} in
+    {x with uri}
 
   let v ?(version = (1, 1)) meth ~path ?body headers =
     let req =
       { Httpaf.Request.headers
       ; meth = to_local meth
-      ; target = String.concat "/" path
+      ; target = Uri.path path
       ; version =
           ( match version with
           | 1, 0 -> HTTP.v1_0
@@ -135,7 +136,7 @@ module Request = struct
                 (Invalid_argument
                    (Fmt.strf "Request.v: invalid version %d.%d" a b)) ) }
     in
-    {req; body}
+    {req; uri=path; body}
 
   let body ({body; _} : req) = body
 
@@ -184,9 +185,9 @@ module Client (CON : Conduit_mirage.S) = struct
 
   type t = Resolver_lwt.t * CON.t
 
-  let request ((resolver, conduit) : t) uri (request : req) =
+  let request ((resolver, conduit) : t) (request : req) =
     Printf.printf "Resolving..%!\n";
-    Resolver_lwt.resolve_uri ~uri resolver
+    Resolver_lwt.resolve_uri ~uri:request.uri resolver
     >>= fun endpoint ->
     Printf.printf "Resolved! Connecting..%!\n";
     Conduit_mirage.client endpoint
@@ -277,7 +278,10 @@ module Server (CON : Conduit_mirage.S) = struct
   type request_handler = reqd -> response Lwt.t
 
   let get_request reqd =
-    { req = Httpaf.Reqd.request reqd
+    let req = Httpaf.Reqd.request reqd in
+    let uri = Uri.of_string req.target in
+    { req
+    ; uri
     ; body = Some (body_read_stream (Httpaf.Reqd.request_body reqd)) }
 
   let respond reqd = function

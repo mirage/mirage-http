@@ -12,5 +12,5 @@ let () =
   let stack = generic_stackv4 default_network in
   let res_dns = resolver_dns stack in
   let conduit = conduit_direct ~tls:false stack in
-  let job = [server $ conduit] in
+  let job = [client $ res_dns $ conduit] in
   register "http-fetch" job

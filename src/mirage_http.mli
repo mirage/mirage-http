@@ -10,23 +10,16 @@ module type S = sig
   type resp
 
   (** The type of the buffer. *)
-  type raw
+  type raw = Cstruct.t
 
   type body = unit -> (raw * int * int) option Lwt.t
 
-  type uri
+  type uri = Uri.t
 
   module HTTP : sig
     (** The type for header maps. A header map represents a list of HTTP
         headers. It maps header field names to their value. *)
     type headers
-
-    (** The type for HTTP [absolute_path]s represented by its non-empty list of
-        URI [segment]s. Note that URI segments can be empty; in particular the
-        absolute path ["/"] is the list with a single empty segment and is thus
-        represented by the list [[""]]. *)
-    type path = string list
-    (* ==> STRING *)
 
     (** The type for representing [HTTP-Version] fields. Both integers must be
         in the interval [\[0;9\]]. *)
@@ -135,17 +128,16 @@ module type S = sig
     val with_headers : req -> HTTP.headers -> req
     (** [with_headers req hs] is [req] with headers [hs]. *)
 
-    val with_path : req -> HTTP.path -> req
-    (** [with_path req p] is [req] with path [p]. *)
+    val with_uri : req -> uri -> req
+    (** [with_uri req p] is [req] with uri [p]. *)
 
     val with_body : req -> body -> req
     (** [with_body req body] is [req] with body [body]. *)
 
     val v :
-         ?version:(* paramètres par défaut là dedans (header Host par exemple) *)
-                  HTTP.version
+         ?version:HTTP.version
       -> HTTP.meth
-      -> path:HTTP.path (* uri complet *)
+      -> path:uri
       -> ?body:body
       -> HTTP.headers
       -> req
@@ -179,9 +171,7 @@ module type S = sig
   module Client (CON : Conduit_mirage.S) : sig
     type t
 
-    val request : t -> uri (* ? *) -> req -> resp io
-
-    (* mode keepalive *)
+    val request : t -> req -> resp io
 
     val connect : Resolver_lwt.t -> CON.t -> t io
   end

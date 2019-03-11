@@ -2,7 +2,7 @@ open Lwt.Infix
 
 let domain = "perdu.com"
 
-let uri = Uri.of_string "http://perdu.com"
+let uri = Uri.of_string "http://perdu.com/"
 
 let ns = "8.8.8.8"
 
@@ -11,15 +11,14 @@ module Make (RES : Resolver_lwt.S) (CON : Conduit_mirage.S) = struct
     include HTTP
   end
 
-  module HTTP = HTTP_Make (Mirage_http_cohttp)
+  module HTTP = HTTP_Make (Mirage_http_httpaf)
   module HTTP_Client = HTTP.Client (CON)
 
   let start resolver conduit =
     HTTP_Client.connect resolver conduit
     >>= fun t ->
     HTTP_Client.request t
-      (Uri.of_string "http://perdu.com")
-      (HTTP.Request.v `GET ~path:["/"]
+      (HTTP.Request.v `GET ~path:uri
          HTTP.HTTP.Headers.(empty |> def (name "Host") domain))
     >>= fun resp ->
     Printf.printf "resp %d%!\n" (HTTP.Response.status resp);
