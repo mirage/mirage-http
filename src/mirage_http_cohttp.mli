@@ -1,9 +1,13 @@
 type 'a io = 'a Lwt.t
+
 type raw = Cstruct.t
+
 type uri = Uri.t
 
 type req
+
 type resp
+
 include
   Mirage_http.S
   with type req := req

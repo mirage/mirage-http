@@ -1,4 +1,4 @@
-module IO : module type of Mirage_http_io
+module IO = Mirage_http_io
 
 module type S = sig
   type +'a io

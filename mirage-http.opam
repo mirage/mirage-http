@@ -1,0 +1,25 @@
+opam-version: "2.0"
+maintainer: "Lucas Pluvinage <lucas.pluvinage@gmail.com>"
+authors: [ "Lucas Pluvinage <lucas.pluvinage@gmail.com>" ]
+license: "ISC"
+homepage: "https://github.com/mirage/mirage-http"
+bug-reports: "https://github.com/mirage/mirage-http/issues"
+dev-repo: "git+https://github.com/mirage/mirage-http.git"
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+]
+depends: [
+  "ocaml" {>= "4.03.0"}
+  "dune" {build}
+  "mirage-conduit-lwt"
+  "mirage-channel-lwt"
+]
+depopts: [
+  "cohttp-mirage"
+  "httpaf-mirage"
+]
+synopsis:
+  "HTTP abstraction and implementations for MirageOS"
+description: """
+"""

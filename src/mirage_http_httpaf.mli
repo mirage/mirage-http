@@ -1,9 +1,11 @@
 type 'a io = 'a Lwt.t
+
 type raw = Cstruct.t
+
 type uri = Uri.t
 
-
 type req
+
 type resp
 
 include
