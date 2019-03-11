@@ -1,0 +1,6 @@
+.merlin
+_build
+*.install
+test/*
+!test/config.ml
+!test/unikernel.ml
