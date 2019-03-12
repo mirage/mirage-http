@@ -69,6 +69,10 @@ module HTTP = struct
 
     let access_control_allow_headers = "Access-Control-Allow-Headers"
 
+    let of_list lst =
+      List.map (fun (a,b) -> (name a, b)) lst
+      |> Httpaf.Headers.of_list
+
     let merge a b =
       Httpaf.Headers.fold
         ~f:(fun key value acc ->
@@ -155,6 +159,8 @@ module Response = struct
 
   let with_body (x : resp) body =
     {x with body}
+
+  let pp fmt res = Httpaf.Response.pp_hum fmt res.resp
 
   let v ?(version = (1, 1)) ~body headers status =
     let resp =

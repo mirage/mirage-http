@@ -97,6 +97,8 @@ module type S = sig
       (** [def_multi n vs hs] is [hs] with [n] bound to the multi-value [vs].
           @raise Invalid_argument if [vs] is [[]]. *)
 
+      val of_list : (string*string) list -> headers
+
       val merge : headers -> headers -> headers
     end
   end
@@ -155,6 +157,8 @@ module type S = sig
     val with_body : resp -> body -> resp
     (** [with_body resp body] is [resp] with body [body]. *)
 
+    val pp : Format.formatter -> resp -> unit
+
     val v :
       ?version:HTTP.version -> body:body -> HTTP.headers -> status -> resp
 
@@ -177,7 +181,7 @@ module type S = sig
   end
 
   module Server (CON : Conduit_mirage.S) : sig
-    module IO : IO.S
+    module IO : IO.S with type 'a t = 'a io
 
     type connection_handler
 

@@ -78,6 +78,11 @@ module HTTP = struct
 
     let access_control_allow_headers = "Access-Control-Allow-Headers"
 
+    let of_list lst =
+      List.map (fun (a,b) -> (name a, b)) lst
+      |> Cohttp.Header.of_list
+
+
     let merge a b =
       Cohttp.Header.fold
         (fun key value acc -> Cohttp.Header.add_unless_exists acc key value)
@@ -141,6 +146,8 @@ module Response = struct
   let with_body (x : resp) body =
     let body = stream_to_body body in
     {x with body}
+
+  let pp fmt res = Cohttp.Response.pp_hum fmt res.resp
 
   let v ?(version = (1, 1)) ~body headers status =
     let body = stream_to_body body in
