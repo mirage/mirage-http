@@ -162,6 +162,12 @@ module Response = struct
 
   let pp fmt res = Httpaf.Response.pp_hum fmt res.resp
 
+  let reason_of_status = function
+  | 101 -> "Switching Protocols"
+  | 404 -> "Not found"
+  | 500 -> "Internal server error"
+  | _ -> ""
+
   let v ?(version = (1, 1)) ~body headers status =
     let resp =
       { Httpaf.Response.headers
@@ -173,7 +179,7 @@ module Response = struct
               raise
                 (Invalid_argument
                    (Fmt.strf "Request.v: invalid version %d.%d" a b)) )
-      ; reason = ""
+      ; reason = reason_of_status status
       ; status = Httpaf.Status.of_code status
       }
     in
@@ -190,6 +196,8 @@ module Client (CON : Conduit_mirage.S) = struct
   open Lwt.Infix
 
   type t = Resolver_lwt.t * CON.t
+
+  module HTTPClient = Httpaf_mirage.Client(Conduit_mirage.Flow)
 
   let request ((resolver, conduit) : t) (request : req) =
     Printf.printf "Resolving..%!\n";
@@ -217,7 +225,7 @@ module Client (CON : Conduit_mirage.S) = struct
       loop ()
     in
     let body =
-      Httpaf_mirage.Client.request flow request.req ~error_handler
+      HTTPClient.request flow request.req ~error_handler
         ~response_handler
     in
     (* Write request body*)
@@ -256,7 +264,7 @@ let body_read_stream body () =
 module Server (CON : Conduit_mirage.S) = struct
   open Lwt.Infix
 
-  module Channel = Mirage_channel_lwt.Make(Mirage_flow_lwt)
+  module Channel = Mirage_channel_lwt.Make(Conduit_mirage.Flow)
   module IO = Mirage_http.IO.Make(Channel)
 
   type flow = Conduit_mirage.Flow.flow
@@ -290,7 +298,7 @@ module Server (CON : Conduit_mirage.S) = struct
     ; uri
     ; body = Some (body_read_stream (Httpaf.Reqd.request_body reqd)) }
 
-  let respond reqd = function
+  let respond flow reqd = function
     | `Response resp ->
         let body = Httpaf.Reqd.respond_with_streaming ~flush_headers_immediately:false reqd resp.resp in
         let rec loop () =
@@ -301,23 +309,32 @@ module Server (CON : Conduit_mirage.S) = struct
               Httpaf.Body.write_string body (Cstruct.to_string c) ~off ~len;
               loop ()
         in loop ()
-    | `Expert _ ->
-        failwith "not implemented"
+    | `Expert (resp, handler) ->
+      let chan = Channel.create flow in
+      Lwt.async (fun () -> handler chan chan);
+      let write_body = Httpaf.Reqd.respond_with_streaming  ~flush_headers_immediately:true reqd resp.resp in
+      let rec loop () =
+        resp.body () >>= function
+          | None -> Httpaf.Body.flush write_body (fun () -> Httpaf.Body.close_writer write_body);
+                    Lwt.return ()
+          | Some (c,off,len) ->
+            Httpaf.Body.write_string write_body (Cstruct.to_string c) ~off ~len;
+            loop ()
+      in loop ()
 
-  let to_httapf_request_handler request_handler (reqd : reqd) =
-    Lwt.async (fun () -> request_handler reqd >>= fun response -> respond reqd response)
+  let to_httapf_request_handler flow request_handler (reqd : reqd) =
+    Lwt.async (fun () -> request_handler reqd >>= fun response -> respond flow reqd response)
 
   let to_error_handler handler ?request _ _ = ignore request;
     Lwt.async (fun () -> handler ())
 
-  let create_connection_handler request_handler error_handler =
-    let error_handler = to_error_handler error_handler in
-    let config = Httpaf.Config.default in
-    let request_handler = to_httapf_request_handler request_handler in
-    Lwt.return
-      (Httpaf_mirage.Server.create_connection_handler ~config ~request_handler
-         ~error_handler)
+  module HTTPServer = Httpaf_mirage.Server(Conduit_mirage.Flow)
 
+  let create_connection_handler request_handler error_handler =
+    Lwt.return (fun flow ->
+      let error_handler = to_error_handler error_handler in
+      let request_handler = to_httapf_request_handler flow request_handler in
+      (HTTPServer.create_connection_handler ~request_handler ~error_handler) flow)
   let listen t server handler = t server handler
 
   let listen_internal handler flow =

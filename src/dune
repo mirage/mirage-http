@@ -11,7 +11,6 @@
  (public_name mirage-http.cohttp)
  (wrapped false)
  (modules mirage_http_cohttp)
- (optional)
  (libraries mirage-http cohttp-mirage))
 
 (library
@@ -19,5 +18,4 @@
   (public_name mirage-http.httpaf)
   (wrapped false)
   (modules mirage_http_httpaf)
-  (optional)
   (libraries mirage-http httpaf-mirage))
