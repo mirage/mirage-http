@@ -310,17 +310,21 @@ module Server (CON : Conduit_mirage.S) = struct
               loop ()
         in loop ()
     | `Expert (resp, handler) ->
-      let chan = Channel.create flow in
-      Lwt.async (fun () -> handler chan chan);
-      let write_body = Httpaf.Reqd.respond_with_streaming  ~flush_headers_immediately:true reqd resp.resp in
-      let rec loop () =
-        resp.body () >>= function
-          | None -> Httpaf.Body.flush write_body (fun () -> Httpaf.Body.close_writer write_body);
-                    Lwt.return ()
-          | Some (c,off,len) ->
-            Httpaf.Body.write_string write_body (Cstruct.to_string c) ~off ~len;
-            loop ()
-      in loop ()
+      let request_body = Httpaf.Reqd.request_body reqd in
+      let write_body = Httpaf.Reqd.respond_with_streaming ~flush_headers_immediately:true reqd resp.resp in
+
+      let upgrade_finished, notify_upgrade_finished = Lwt.wait () in
+
+      let rec on_read _ ~off:_  ~len:_  =
+        Httpaf.Body.schedule_read request_body ~on_read ~on_eof
+      and on_eof () =
+        Httpaf.Body.flush write_body (fun () ->
+          let chan = Channel.create flow in
+          Lwt.async (fun () -> handler chan chan);
+          Lwt.wakeup_later notify_upgrade_finished ())
+      in
+      Httpaf.Body.schedule_read request_body ~on_eof ~on_read;
+      upgrade_finished
 
   let to_httapf_request_handler flow request_handler (reqd : reqd) =
     Lwt.async (fun () -> request_handler reqd >>= fun response -> respond flow reqd response)
